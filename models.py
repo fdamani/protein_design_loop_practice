@@ -20,8 +20,10 @@ from sklearn.ensemble import RandomForestRegressor
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 seed=7
+np.random.seed(seed)
 torch.manual_seed(seed)
-np.random.seed(seed)  # Numpy module.
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(seed)
 
 class LinearRegression():
 	def __init__(self, model='ridge'):

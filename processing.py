@@ -19,6 +19,7 @@ class Processing:
 		self.seq, self.y = self.process(csv_file)
 		# standardize y values
 		self.y = self.standardize(self.y)
+		self.seq_len = 12
 	
 		#### test cases #####
 		testSeq = 'QTI'
@@ -76,6 +77,8 @@ class Processing:
 
 	def seq_matrix_to_inds(self, X):
 		"""convert matrix of sequences to matrix of indices"""
+		if len(X.shape)==1:
+			X = X.reshape(-1,1)
 		N = len(X)
 		indsX = np.array([self.seq_to_ind(list(X[i][0])) for i in range(N)])
 		return indsX		

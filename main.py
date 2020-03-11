@@ -63,15 +63,6 @@ def one_hot_regression(proc, data):
 
 	return linReg
 	
-	# ######### random forest #########
-	# print('random forest...')
-	# rf = RandomForest()
-	# rf.fit(trainOneHotX, trainY)
-	# preds = rf.predict(testOneHotX)
-	# print('test r2 score: ', metrics.r2_score(testY, preds))
-	# print('test mse: ', metrics.mse(testY, preds))
-
-
 def pca(data, net):
 	"""compute pca plots for one hot and neural embedding.
 		- compare variance explained
@@ -110,40 +101,62 @@ def pca(data, net):
 
 	return oneHotPCA_2d
 
-def pwms(proc, trainX, trainY, y_thresh=3.5, top=True):
+def pwms(x, proc):
 	"""compute position weight matrices"""
-	if top:
-		x = trainX[trainY > y_thresh]
-	else:
-		x = trainX[trainY < y_thresh]
-	return pwm.compute_counts(x, proc)
+	genModel = gen.IndependentMult()
+	return genModel.estimate(x, proc)
 
-
-def gen_model_independent_mult(pwm_topy, topY, proc, linReg, net, rnn):
+def gen_model_independent_mult(pwm_topy, topY, proc, linReg, net, rnn, numCompounds):
 	# independent multinomials with pwm computed on top y scoring compounds
-	numCompounds = 1000
-	rand_inds = np.random.permutation(np.arange(len(topY)))
-	topY = topY[rand_inds[0:numCompounds]]
+	filename = '/gen_model_independent_multinomial'
 
-	gen_inds = gen.independent_multinomial(pwm_topy, numCompounds)
+	genModel = gen.IndependentMult()
+	gen_inds = genModel.sample(pwm_topy, numCompounds)
+
+	return compute_stats_on_generated_seqs(gen_inds, proc.seq, topY, linReg, net, rnn, filename)
+
+def gen_model_ar1_shared(model_params, topY, proc, linReg, net, rnn, numCompounds):
+	filename = '/gen_model_ar1_shared_params'
+	prior, transition_mat = model_params
+
+	genModel = gen.Ar1Shared()
+	gen_inds = genModel.sample(model_params, N=numCompounds, proc=proc)
+
+	return compute_stats_on_generated_seqs(gen_inds, proc.seq, topY, linReg, net, rnn, filename)
+
+def ar1_no_share_model_sample(model_params, topY, proc, linReg, net, rnn, numCompounds):
+	filename = '/gen_model_ar1_no_shared_params'
+	prior, transition_mats = model_params
+	genModel = gen.Ar1NoShare()
+	gen_inds = genModel.sample(model_params, N=numCompounds, proc=proc)
+	
+	return compute_stats_on_generated_seqs(gen_inds, proc.seq, topY, linReg, net, rnn, filename)
+
+def predict_scores_and_filter(gen_inds, data_seqs, topY, linReg, net, rnn, filename):
 	gen_seqs = proc.inds_matrix_to_seqs(gen_inds)
-	novel_seqs, percent_novel = metrics.filter_to_novel(gen_seqs, proc.seq)
+	novel_seqs, percent_novel = metrics.filter_to_novel(gen_seqs, data_seqs)
 	novel_inds = proc.seq_matrix_to_inds(novel_seqs)
 	print('percent novel: ', percent_novel)
 
 	neuralPreds  = rnn.predict(novel_inds, net)
 	linRegPreds = linReg.predict(proc.sequences_to_one_hot(novel_seqs))
 
-	metrics.score_histogram(neuralPreds, topY, 'rnn_output', '/hist_independent_mult_neuralPreds.png')
-	metrics.score_histogram(linRegPreds, topY, 'rnn_output', '/hist_independent_mult_linRegPreds.png')
-
-
-	# # in general, the linear regressor's predictions don't go higher than 3
-	# lx = linReg.predict(testOneHotX)
-	# print(lx[lx > 3])
-	# print(len(testY[testY>3]))
+	metrics.score_histogram(neuralPreds, topY, 'rnn_output', filename + '_neuralPreds.png')
+	metrics.score_histogram(linRegPreds, topY, 'rnn_output', filename + '_linRegPreds.png')
 
 	return neuralPreds, linRegPreds, novel_seqs
+
+
+def run_generative_model(model, filename):
+	"""
+	- estimate parameters to generative model
+	- sample from model
+	- predict scores and filter to novel compounds
+	"""	
+	params = model.estimate(topX, proc)
+	sampledIndSeqs = model.sample(params, numCompounds, proc)
+	neuralPreds, linPreds, novelSeqs = predict_scores_and_filter(sampledIndSeqs, topX, topY, linReg, net, rnn, filename)
+	return params, neuralPreds, linPreds, novelSeqs
 
 if __name__ == "__main__":
 	########### initial processing #########
@@ -177,37 +190,43 @@ if __name__ == "__main__":
 
 
 	############################ PCA on one hot and neural embedding ############################
+
 	oneHotPCA_2d = pca(data=(trainOneHotX, testOneHotX, testX, trainY, testY), net=net)
 
-
 	############################ generative modeling ############################
+	thresholds = [-1000, 3.5, -.5]
+	models = ['independent', 'ar1_shared', 'ar1_noshare']
+	model_data = {}
+	for mod in models:
+		model_data[mod] = []
 	
-	# generative model of the entire data distribution
-	y_thresh = -100.0 # pwm for the entire dataset
-	pwm_topy = pwms(proc, trainX, trainY, y_thresh=y_thresh, top=True)
-	topY = trainY[trainY > y_thresh]
+	for i in range(len(thresholds)):
+		# limit to samples above threshold
+		y_thresh = thresholds[i]
+		if y_thresh == -.5:
+			topY, topX = trainY[trainY < y_thresh], trainX[trainY < y_thresh]
+		else:
+			topY, topX = trainY[trainY > y_thresh], trainX[trainY > y_thresh]
+	
+		# randomly select a subset
+		numCompounds = 1000
+		rand_inds = np.random.permutation(np.arange(len(topY)))
+		topY, topX = topY[rand_inds[0:numCompounds]], topX[rand_inds[0:numCompounds]]
 
-	# independent multinomials with pwm computed on top y scoring compounds
-	neuralPredsAll, linRegPredsAll, genSeqsAll = gen_model_independent_mult(pwm_topy, topY, proc, linReg, net, rnn)
+		filename = '/gen_model_independent_multinomial'
+		params, neuralPreds, linPreds, novelSeqs = run_generative_model(gen.IndependentMult(), filename)
+		model_data['independent'].append((params, neuralPreds, linPreds, novelSeqs))
+		print('neural prediction mean: ', np.mean(neuralPreds), np.std(neuralPreds))
+		
 
-	print('neural prediction mean: ', np.mean(neuralPredsAll), ' std: ', np.std(neuralPredsAll))
-	embed()
+		filename = '/gen_model_ar1_shared_params'
+		params, neuralPreds, linPreds, novelSeqs = run_generative_model(gen.Ar1Shared(), filename)
+		model_data['ar1_shared'].append((params, neuralPreds, linPreds, novelSeqs))
 
-	# generative model of sequences with a score greater than 3.5
-	y_thresh = 3.5 # pwm for the entire dataset
-	pwm_topy = pwms(proc, trainX, trainY, y_thresh=y_thresh, top=True)
-	topY = trainY[trainY > y_thresh]
+		print('neural prediction mean: ', np.mean(neuralPreds), np.std(neuralPreds))
 
-	neuralPredsTop, linRegPredsTop, genSeqsTop = gen_model_independent_mult(pwm_topy, topY, proc, linReg, net, rnn)
-	print('neural prediction mean: ', np.mean(neuralPredsTop), ' std: ', np.std(neuralPredsTop))
+		filename = '/gen_model_ar1_no_shared_params'
+		params, neuralPreds, linPreds, novelSeqs = run_generative_model(gen.Ar1NoShare(), filename)
+		model_data['ar1_noshare'].append((params, neuralPreds, linPreds, novelSeqs))
+		print('neural prediction mean: ', np.mean(neuralPreds), np.std(neuralPreds))
 
-	embed()
-
-	y_thresh = -.5 # pwm for the entire dataset
-	pwm_bottomy = pwms(proc, trainX, trainY, y_thresh=y_thresh, top=False)
-	bottomY = trainY[trainY < y_thresh]
-
-	neuralPredsBottom, linRegPredsBottom, genSeqsBottom = gen_model_independent_mult(pwm_bottomy, bottomY, proc, linReg, net, rnn)
-	print('neural prediction mean: ', np.mean(neuralPredsBottom), ' std: ', np.std(neuralPredsBottom))
-
-	embed()
