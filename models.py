@@ -1,3 +1,10 @@
+"""
+	This file contains three models: linear regression, random forest, and rnn regression
+	rnn training is enclosed in a separate class.
+"""
+
+
+
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
