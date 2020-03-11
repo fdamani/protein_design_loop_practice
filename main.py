@@ -6,7 +6,6 @@ import processing
 import models
 import evaluation
 import dim_reduction as dr
-import pwm
 import generative as gen
 
 import torch
@@ -21,8 +20,17 @@ from models import LinearRegression, RandomForest, TrainRNN
 from evaluation import Evaluation
 from IPython import embed
 
-
 def neural_regression(proc, data, trainRNN=False, model_path=None):
+	"""
+		rnn regression file 
+		:proc processing object
+		:data tuple containing train/test (in integer mapping space)
+		:trainRNN (bool) true: train rnn, false: read model from file
+		:model_path path to trained model object
+
+		returns network object and trainrnn class object
+	"""
+
 	print('neural regression...')
 
 	trainIndsX, trainY, testIndsX, testY = data
@@ -47,6 +55,13 @@ def neural_regression(proc, data, trainRNN=False, model_path=None):
 	return net, rnn
 
 def one_hot_regression(proc, data):
+	"""
+		linear regression using a one hot representation
+		:proc processing object
+		:data tuple containing train/test (one hot encoded space)
+
+		return linear regression object
+	"""
 	print('one hot regression...')
 	"""ridge and random forest regression"""
 	# train and test 
@@ -67,6 +82,11 @@ def pca(data, net):
 	"""compute pca plots for one hot and neural embedding.
 		- compare variance explained
 		- dimensionality reduction
+
+		:param data tuple containing one hot and sequences train/test split
+		:net rnn network model
+
+		returns one hot pca object
 	"""
 	trainOneHotX, testOneHotX, testX, trainY, testY = data
 
@@ -102,6 +122,22 @@ def pca(data, net):
 	return oneHotPCA_2d
 
 def predict_scores_and_filter(gen_inds, data_seqs, topY, linReg, net, rnn, filename):
+	"""
+		given generated sequences from a model
+			- score sequences
+			- filter to novel samples
+			- compute histogram of scored sequences vs scores from training data
+
+		:param gen_inds generated sequences in index space
+		:data_seqs training data sequences
+		:topY scores for training data
+		:net rnn network
+		:rnn rnn training object
+		:filename file name for histogram
+		
+		return rnn preds, linear model predictions, novel sequences
+
+	"""
 	gen_seqs = proc.inds_matrix_to_seqs(gen_inds)
 	novel_seqs, percent_novel = metrics.filter_to_novel(gen_seqs, data_seqs)
 	novel_inds = proc.seq_matrix_to_inds(novel_seqs)
