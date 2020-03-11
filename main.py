@@ -101,37 +101,6 @@ def pca(data, net):
 
 	return oneHotPCA_2d
 
-def pwms(x, proc):
-	"""compute position weight matrices"""
-	genModel = gen.IndependentMult()
-	return genModel.estimate(x, proc)
-
-def gen_model_independent_mult(pwm_topy, topY, proc, linReg, net, rnn, numCompounds):
-	# independent multinomials with pwm computed on top y scoring compounds
-	filename = '/gen_model_independent_multinomial'
-
-	genModel = gen.IndependentMult()
-	gen_inds = genModel.sample(pwm_topy, numCompounds)
-
-	return compute_stats_on_generated_seqs(gen_inds, proc.seq, topY, linReg, net, rnn, filename)
-
-def gen_model_ar1_shared(model_params, topY, proc, linReg, net, rnn, numCompounds):
-	filename = '/gen_model_ar1_shared_params'
-	prior, transition_mat = model_params
-
-	genModel = gen.Ar1Shared()
-	gen_inds = genModel.sample(model_params, N=numCompounds, proc=proc)
-
-	return compute_stats_on_generated_seqs(gen_inds, proc.seq, topY, linReg, net, rnn, filename)
-
-def ar1_no_share_model_sample(model_params, topY, proc, linReg, net, rnn, numCompounds):
-	filename = '/gen_model_ar1_no_shared_params'
-	prior, transition_mats = model_params
-	genModel = gen.Ar1NoShare()
-	gen_inds = genModel.sample(model_params, N=numCompounds, proc=proc)
-	
-	return compute_stats_on_generated_seqs(gen_inds, proc.seq, topY, linReg, net, rnn, filename)
-
 def predict_scores_and_filter(gen_inds, data_seqs, topY, linReg, net, rnn, filename):
 	gen_seqs = proc.inds_matrix_to_seqs(gen_inds)
 	novel_seqs, percent_novel = metrics.filter_to_novel(gen_seqs, data_seqs)
@@ -145,7 +114,6 @@ def predict_scores_and_filter(gen_inds, data_seqs, topY, linReg, net, rnn, filen
 	metrics.score_histogram(linRegPreds, topY, 'rnn_output', filename + '_linRegPreds.png')
 
 	return neuralPreds, linRegPreds, novel_seqs
-
 
 def run_generative_model(model, filename):
 	"""
